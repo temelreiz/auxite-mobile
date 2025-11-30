@@ -3438,6 +3438,22 @@ function MarketsScreen({ prices, isLive, onRefresh, refreshing, language = 'tr',
   const [showChart, setShowChart] = useState(false);
   const [selectedCrypto, setSelectedCrypto] = useState(null);
   const [showCryptoChart, setShowCryptoChart] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showOnChainDeposit, setShowOnChainDeposit] = useState(false);
+  const [depositSearchQuery, setDepositSearchQuery] = useState('');
+
+  // Deposit coins list
+  const depositCoins = [
+    { id: 'BTC', name: 'Bitcoin', icon: '₿', color: '#F7931A' },
+    { id: 'ETH', name: 'Ethereum', icon: 'Ξ', color: '#627EEA' },
+    { id: 'XRP', name: 'Ripple', icon: '✕', color: '#23292F' },
+    { id: 'SOL', name: 'Solana', icon: '◎', color: '#9945FF' },
+  ];
+  
+  const filteredDepositCoins = depositCoins.filter(coin => 
+    coin.id.toLowerCase().includes(depositSearchQuery.toLowerCase()) ||
+    coin.name.toLowerCase().includes(depositSearchQuery.toLowerCase())
+  );
 
   // Trade panel göster
   if (showChart && selectedMetal) {
@@ -3465,6 +3481,7 @@ function MarketsScreen({ prices, isLive, onRefresh, refreshing, language = 'tr',
     );
   }
   return (
+    <>
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={styles.content}
@@ -3530,6 +3547,26 @@ function MarketsScreen({ prices, isLive, onRefresh, refreshing, language = 'tr',
         );
       })}
 
+      {/* Quick Actions */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', marginVertical: 20, paddingHorizontal: 16 }}>
+        <TouchableOpacity 
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: Colors.primary,
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+            borderRadius: 12,
+          }}
+          onPress={() => setShowDepositModal(true)}
+        >
+          <Feather name="plus" size={20} color="#000" style={{ marginRight: 8 }} />
+          <Text style={{ color: '#000', fontSize: 16, fontWeight: '600' }}>
+            {language === 'tr' ? 'Yatır' : 'Deposit'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* How It Works */}
       <View style={styles.howItWorksCard}>
         <View style={styles.howItWorksHeader}>
@@ -3564,6 +3601,143 @@ function MarketsScreen({ prices, isLive, onRefresh, refreshing, language = 'tr',
         </View>
       </View>
     </ScrollView>
+
+      {/* Deposit Method Selection Modal */}
+      <Modal visible={showDepositModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { paddingBottom: 30 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{language === "tr" ? "Yatırma Yöntemi Seçin" : "Select Deposit Method"}</Text>
+              <TouchableOpacity onPress={() => setShowDepositModal(false)}>
+                <Feather name="x" size={24} color={Colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            
+            {/* On-Chain Deposit Option */}
+            <TouchableOpacity 
+              style={styles.depositMethodCard}
+              onPress={() => {
+                setShowDepositModal(false);
+                setShowOnChainDeposit(true);
+              }}
+            >
+              <View style={[styles.depositMethodIcon, { backgroundColor: Colors.cardBg }]}>
+                <Feather name="download" size={20} color={Colors.textPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.depositMethodTitle}>On-Chain Deposit</Text>
+                <Text style={styles.depositMethodDesc}>
+                  {language === "tr" 
+                    ? "Diğer borsalardan/cüzdanlardan kripto yatırın" 
+                    : "Deposit crypto from other exchanges/wallets"}
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+            
+            {/* Deposit Fiat Option */}
+            <TouchableOpacity 
+              style={styles.depositMethodCard}
+              onPress={() => {
+                setShowDepositModal(false);
+                Alert.alert(
+                  language === "tr" ? "Fiat Yatırma" : "Deposit Fiat",
+                  language === "tr" ? "Yakında aktif olacak" : "Coming soon"
+                );
+              }}
+            >
+              <View style={[styles.depositMethodIcon, { backgroundColor: Colors.cardBg }]}>
+                <Feather name="credit-card" size={20} color={Colors.textPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.depositMethodTitle}>
+                  {language === "tr" ? "Fiat Yatır" : "Deposit Fiat"}
+                </Text>
+                <Text style={styles.depositMethodDesc}>
+                  {language === "tr" 
+                    ? "SWIFT, kart, Apple/Google Pay ile USD/TRY yatırın" 
+                    : "Deposit USD/TRY via SWIFT, card, Apple/Google Pay"}
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* On-Chain Deposit - Select Coin Modal */}
+      <Modal visible={showOnChainDeposit} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: Colors.background }}>
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+            <TouchableOpacity 
+              onPress={() => setShowOnChainDeposit(false)}
+              style={{ padding: 8 }}
+            >
+              <Feather name="arrow-left" size={24} color={Colors.textPrimary} />
+            </TouchableOpacity>
+            <Text style={{ flex: 1, textAlign: 'center', fontSize: 18, fontWeight: 'bold', color: Colors.textPrimary, marginRight: 40 }}>
+              {language === "tr" ? "Coin Seç" : "Select Coin"}
+            </Text>
+          </View>
+
+          {/* Search */}
+          <View style={{ padding: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.cardBg, borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: Colors.border }}>
+              <Feather name="search" size={20} color={Colors.textMuted} />
+              <TextInput
+                style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 12, color: Colors.textPrimary, fontSize: 16 }}
+                placeholder={language === "tr" ? "Coin Ara" : "Search Coins"}
+                placeholderTextColor={Colors.textMuted}
+                value={depositSearchQuery}
+                onChangeText={setDepositSearchQuery}
+              />
+            </View>
+          </View>
+
+          {/* Trending Label */}
+          <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.textMuted }}>
+              {language === "tr" ? "Popüler" : "Trending"}
+            </Text>
+          </View>
+
+          {/* Coin List */}
+          <ScrollView style={{ flex: 1, paddingHorizontal: 16 }}>
+            {filteredDepositCoins.map((coin) => (
+              <TouchableOpacity
+                key={coin.id}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.border }}
+                onPress={() => {
+                  setShowOnChainDeposit(false);
+                  Alert.alert(
+                    `${coin.name} Deposit`,
+                    language === "tr" ? "Deposit adresi yakında" : "Deposit address coming soon"
+                  );
+                }}
+              >
+                <View style={{ 
+                  width: 40, 
+                  height: 40, 
+                  borderRadius: 20, 
+                  backgroundColor: coin.color, 
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  marginRight: 12 
+                }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>{coin.icon}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: Colors.textPrimary, fontWeight: '600', fontSize: 16 }}>{coin.id}</Text>
+                  <Text style={{ color: Colors.textMuted, fontSize: 14 }}>{coin.name}</Text>
+                </View>
+                <Feather name="chevron-right" size={20} color={Colors.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
+    </>
   );
 }
 
