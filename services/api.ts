@@ -637,3 +637,185 @@ export async function executeCustodialTransfer(params: {
     return { success: false, error: error.message || 'Network error' };
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOBILE PAIRING (QR code login from web)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface PairingVerifyResult {
+  success: boolean;
+  walletAddress?: string;
+  walletType?: 'custodial' | 'external';
+  userId?: string;
+  error?: string;
+}
+
+export interface PairingConfirmResult {
+  success: boolean;
+  authToken?: string;
+  error?: string;
+}
+
+/**
+ * Verify a pairing session from QR code scan
+ * Called when mobile app scans QR from web
+ */
+export async function verifyPairingSession(params: {
+  sessionId: string;
+  pairingCode: string;
+  walletAddress: string;
+  deviceId?: string;
+}): Promise<PairingVerifyResult> {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/pair/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      return { success: false, error: data.error || 'Verification failed' };
+    }
+
+    return {
+      success: true,
+      walletAddress: data.session?.walletAddress,
+    };
+  } catch (error: any) {
+    console.error('Verify pairing error:', error);
+    return { success: false, error: error.message || 'Network error' };
+  }
+}
+
+/**
+ * Confirm pairing and get user data
+ * This transfers the wallet session from web to mobile
+ */
+export async function confirmPairingSession(params: {
+  sessionId: string;
+  walletAddress: string;
+  approved: boolean;
+  deviceId?: string;
+}): Promise<PairingConfirmResult & { walletType?: string; userId?: string }> {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/pair/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      return { success: false, error: data.error || 'Confirmation failed' };
+    }
+
+    // If approved, save wallet data to AsyncStorage
+    if (params.approved && data.session?.walletAddress) {
+      // Get user info to determine wallet type
+      const userInfo = await checkUserExists(data.session.walletAddress);
+
+      await AsyncStorage.setItem(STORAGE_KEYS.WALLET_MODE, userInfo.walletType || 'external');
+      await AsyncStorage.setItem(STORAGE_KEYS.WALLET_ADDRESS, data.session.walletAddress);
+      await AsyncStorage.setItem(STORAGE_KEYS.HAS_WALLET, 'true');
+      if (userInfo.userId) {
+        await AsyncStorage.setItem(STORAGE_KEYS.USER_ID, userInfo.userId);
+      }
+
+      return {
+        success: true,
+        authToken: data.session.authToken,
+        walletType: userInfo.walletType,
+        userId: userInfo.userId,
+      };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Confirm pairing error:', error);
+    return { success: false, error: error.message || 'Network error' };
+  }
+}
+
+/**
+ * Complete pairing flow - verify + confirm in one call
+ * Use this for simple QR scan → login flow
+ */
+export async function completePairing(params: {
+  sessionId: string;
+  pairingCode: string;
+  walletAddress: string;
+  deviceId?: string;
+}): Promise<{
+  success: boolean;
+  walletAddress?: string;
+  walletType?: 'custodial' | 'external';
+  userId?: string;
+  error?: string;
+}> {
+  try {
+    // Step 1: Verify the session
+    const verifyResult = await verifyPairingSession({
+      sessionId: params.sessionId,
+      pairingCode: params.pairingCode,
+      walletAddress: params.walletAddress,
+      deviceId: params.deviceId,
+    });
+
+    if (!verifyResult.success) {
+      return { success: false, error: verifyResult.error };
+    }
+
+    // Step 2: Confirm and get wallet data
+    const confirmResult = await confirmPairingSession({
+      sessionId: params.sessionId,
+      walletAddress: params.walletAddress,
+      approved: true,
+      deviceId: params.deviceId,
+    });
+
+    if (!confirmResult.success) {
+      return { success: false, error: confirmResult.error };
+    }
+
+    return {
+      success: true,
+      walletAddress: params.walletAddress,
+      walletType: confirmResult.walletType as 'custodial' | 'external',
+      userId: confirmResult.userId,
+    };
+  } catch (error: any) {
+    console.error('Complete pairing error:', error);
+    return { success: false, error: error.message || 'Network error' };
+  }
+}
+
+/**
+ * Approve QR login session (simpler flow for /api/auth/qr-login)
+ * Mobile scans QR from web and approves login
+ */
+export async function approveQRLogin(params: {
+  sessionId: string;
+  walletAddress: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/qr-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || 'Login approval failed' };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Approve QR login error:', error);
+    return { success: false, error: error.message || 'Network error' };
+  }
+}

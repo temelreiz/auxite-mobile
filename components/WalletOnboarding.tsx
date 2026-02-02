@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '@/stores/useStore';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ethers } from 'ethers';
+import { completePairing, checkUserExists, approveQRLogin } from '@/services/api';
 
 // ============================================
 // RENK PALETİ - Light/Dark Theme
@@ -772,13 +773,16 @@ export default function WalletOnboarding({
     }
     
     // Check if it's a web session sync QR (URI format: auxite://auth?session=xxx&address=xxx)
-    if (scannedData.startsWith('auxite://') || scannedData.includes('auxite') || scannedData.includes('session')) {
+    if (scannedData.startsWith('auxite://') || scannedData.includes('auxite') || scannedData.includes('session') || scannedData.includes('auxite_login')) {
       try {
-        // Try JSON format first
+        // Try JSON format first (from /api/auth/qr-login)
+        // Format: {"type":"auxite_login","sessionId":"xxx","code":"xxx","expiresAt":xxx}
         try {
           const sessionData = JSON.parse(scannedData);
-          if (sessionData.address) {
-            console.log('📱 Session sync (JSON):', sessionData.address);
+
+          // If it has address directly - use it
+          if (sessionData.address && sessionData.address.startsWith('0x')) {
+            console.log('📱 Session sync (JSON with address):', sessionData.address);
             await AsyncStorage.setItem(STORAGE_KEYS.HAS_WALLET, 'true');
             await AsyncStorage.setItem(STORAGE_KEYS.WALLET_ADDRESS, sessionData.address);
             setWalletAddress(sessionData.address);
@@ -787,14 +791,49 @@ export default function WalletOnboarding({
             setStep('password');
             return;
           }
+
+          // If it's auxite_login type with sessionId - this is QR login from web
+          // Mobile needs to approve with its own wallet address
+          if (sessionData.type === 'auxite_login' && sessionData.sessionId) {
+            console.log('📱 QR Login detected, sessionId:', sessionData.sessionId);
+
+            // Check if mobile has a wallet
+            const storedAddress = await AsyncStorage.getItem(STORAGE_KEYS.WALLET_ADDRESS);
+
+            if (!storedAddress) {
+              showAlert('error', t('error'), 'Önce bir cüzdan oluşturun veya içe aktarın');
+              return;
+            }
+
+            setIsLoading(true);
+
+            // Approve the QR login session
+            const approveResult = await approveQRLogin({
+              sessionId: sessionData.sessionId,
+              walletAddress: storedAddress,
+            });
+
+            setIsLoading(false);
+
+            if (approveResult.success) {
+              console.log('📱 ✅ QR Login approved for:', storedAddress);
+              showAlert('success', t('success'), 'Web oturumu onaylandı!');
+              setScannedData(null);
+              setShowScanner(false);
+            } else {
+              console.log('📱 ❌ QR Login failed:', approveResult.error);
+              showAlert('error', t('error'), approveResult.error || 'Onay başarısız');
+            }
+            return;
+          }
         } catch {
           // Not JSON, try URI format
         }
-        
+
         // Parse URI format: auxite://auth?session=xxx&code=xxx&address=xxx
         if (scannedData.startsWith('auxite://')) {
           console.log('📱 Parsing auxite URI:', scannedData);
-          
+
           // Extract query params manually (URLSearchParams may not work in RN)
           const queryString = scannedData.split('?')[1];
           if (queryString) {
@@ -805,23 +844,76 @@ export default function WalletOnboarding({
                 params[key] = decodeURIComponent(value);
               }
             });
-            
+
             console.log('📱 Parsed params:', params);
-            
-            const directAddress = params.address;
-            
-            // If address is in URI - USE IT DIRECTLY
-            if (directAddress && directAddress.startsWith('0x')) {
-              console.log('📱 ✅ Got address from QR:', directAddress);
-              await AsyncStorage.setItem(STORAGE_KEYS.WALLET_ADDRESS, directAddress);
-              setWalletAddress(directAddress);
+
+            const { session, code, address } = params;
+
+            // ═══════════════════════════════════════════════════════════════
+            // PAIRING FLOW: If we have session + code + address, use backend API
+            // ═══════════════════════════════════════════════════════════════
+            if (session && code && address && address.startsWith('0x')) {
+              console.log('📱 🔐 Starting pairing flow...');
+              setIsLoading(true);
+
+              try {
+                // Complete the pairing process with backend
+                const pairingResult = await completePairing({
+                  sessionId: session,
+                  pairingCode: code,
+                  walletAddress: address,
+                });
+
+                if (pairingResult.success) {
+                  console.log('📱 ✅ Pairing successful:', pairingResult);
+
+                  // Save wallet mode from backend response
+                  const walletMode = pairingResult.walletType || 'external';
+                  await AsyncStorage.setItem(STORAGE_KEYS.HAS_WALLET, 'true');
+                  await AsyncStorage.setItem(STORAGE_KEYS.WALLET_ADDRESS, address);
+                  await AsyncStorage.setItem('auxite_wallet_mode', walletMode);
+
+                  setWalletAddress(address);
+                  showAlert('success', t('success'), t('sessionSyncSuccess'));
+                  setScannedData(null);
+                  setIsLoading(false);
+                  setStep('password');
+                  return;
+                } else {
+                  console.log('📱 ❌ Pairing failed:', pairingResult.error);
+                  setIsLoading(false);
+                  showAlert('error', t('error'), pairingResult.error || 'Eşleştirme başarısız');
+                  return;
+                }
+              } catch (pairingError) {
+                console.error('📱 ❌ Pairing error:', pairingError);
+                setIsLoading(false);
+                // Fallback to direct address usage
+              }
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // FALLBACK: If only address is available (no session/code)
+            // ═══════════════════════════════════════════════════════════════
+            if (address && address.startsWith('0x')) {
+              console.log('📱 ✅ Got address from QR (fallback):', address);
+
+              // Check user info from backend
+              const userInfo = await checkUserExists(address);
+              const walletMode = userInfo.walletType || 'external';
+
+              await AsyncStorage.setItem(STORAGE_KEYS.HAS_WALLET, 'true');
+              await AsyncStorage.setItem(STORAGE_KEYS.WALLET_ADDRESS, address);
+              await AsyncStorage.setItem('auxite_wallet_mode', walletMode);
+
+              setWalletAddress(address);
               showAlert('success', t('success'), t('sessionSyncSuccess'));
               setScannedData(null);
               setStep('password');
               return;
             }
           }
-          
+
           // No address in QR - show error
           console.log('📱 ❌ No address found in QR');
           showAlert('error', t('error'), 'QR kodunda adres bulunamadı');
