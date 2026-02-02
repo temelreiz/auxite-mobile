@@ -292,13 +292,14 @@ export default function AssetsScreen() {
   const [showAllTransactions, setShowAllTransactions] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  // Computed Values
-  const totalMetals = metals.reduce((sum, m) => sum + m.value, 0);
-  const totalCrypto = cryptos.reduce((sum, c) => sum + c.value, 0);
+  // Computed Values - only show real values after prices are loaded from API
+  const showValues = pricesLoaded && !loading;
+  const totalMetals = showValues ? metals.reduce((sum, m) => sum + m.value, 0) : 0;
+  const totalCrypto = showValues ? cryptos.reduce((sum, c) => sum + c.value, 0) : 0;
   // Allocations are NOT counted separately - they're already included in metal balances
   // They just represent WHERE the tokens are physically stored
   const totalAllocations = 0; // Don't double count!
-  const totalStaking = stakes.reduce((sum, s) => sum + (s.amountGrams * (metalPrices[s.metalSymbol] || 0)), 0);
+  const totalStaking = showValues ? stakes.reduce((sum, s) => sum + (s.amountGrams * (metalPrices[s.metalSymbol] || 0)), 0) : 0;
   const totalAvailable = totalMetals + totalCrypto;
   const totalLocked = totalStaking; // Only staking is locked, allocations are in balance
   const totalValue = totalAvailable + totalLocked;
@@ -830,21 +831,21 @@ export default function AssetsScreen() {
         <View style={[styles.totalCard, { backgroundColor: isDark ? '#1e293b' : '#fff' }]}>
           <Text style={[styles.totalLabel, { color: isDark ? '#94a3b8' : '#64748b' }]}>{t.totalValue}</Text>
           <Text style={[styles.totalValue, { color: isDark ? '#fff' : '#0f172a' }]}>
-            {loading ? '...' : formatValue(totalValue)}
+            {!showValues ? '...' : formatValue(totalValue)}
           </Text>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: '#10b981' }]}>{loading ? '...' : formatValue(totalAvailable)}</Text>
+              <Text style={[styles.statValue, { color: '#10b981' }]}>{!showValues ? '...' : formatValue(totalAvailable)}</Text>
               <Text style={[styles.statLabel, { color: isDark ? '#64748b' : '#94a3b8' }]}>{t.available}</Text>
             </View>
             <View style={[styles.statDivider, { backgroundColor: isDark ? '#334155' : '#e2e8f0' }]} />
             <TouchableOpacity style={styles.statItem} onPress={() => setShowLockedAssets(true)}>
-              <Text style={[styles.statValue, { color: '#f59e0b' }]}>{loading ? '...' : formatValue(totalLocked)}</Text>
+              <Text style={[styles.statValue, { color: '#f59e0b' }]}>{!showValues ? '...' : formatValue(totalLocked)}</Text>
               <Text style={[styles.statLabel, { color: isDark ? '#64748b' : '#94a3b8' }]}>{t.locked} 🔒</Text>
             </TouchableOpacity>
             <View style={[styles.statDivider, { backgroundColor: isDark ? '#334155' : '#e2e8f0' }]} />
             <TouchableOpacity style={styles.statItem} onPress={() => router.push('/limit-orders')}>
-              <Text style={[styles.statValue, { color: '#8b5cf6' }]}>{loading ? '...' : formatValue(pendingOrdersValue)}</Text>
+              <Text style={[styles.statValue, { color: '#8b5cf6' }]}>{!showValues ? '...' : formatValue(pendingOrdersValue)}</Text>
               <Text style={[styles.statLabel, { color: isDark ? '#64748b' : '#94a3b8' }]}>{t.pendingOrders} ⏳</Text>
             </TouchableOpacity>
           </View>
