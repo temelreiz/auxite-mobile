@@ -275,10 +275,13 @@ export default function AssetsScreen() {
   const t = translations6Lang[language] || translations6Lang.en;
 
   // Data States
-  // Realistic default prices (January 2026) - prevents $0 or wrong prices
+  // Default prices - updated February 2026
+  // These are fallbacks, actual prices fetched from API
   const DEFAULT_METAL_PRICES = { AUXG: 165, AUXS: 3.20, AUXPT: 75, AUXPD: 58 };
+  const DEFAULT_CRYPTO_PRICES = { BTC: 97000, ETH: 2700, SOL: 200, XRP: 2.5, USDT: 1 };
   const [metalPrices, setMetalPrices] = useState<Record<string, number>>(DEFAULT_METAL_PRICES);
-  const [cryptoPrices, setCryptoPrices] = useState<Record<string, number>>({ BTC: 105000, ETH: 3800 });
+  const [cryptoPrices, setCryptoPrices] = useState<Record<string, number>>(DEFAULT_CRYPTO_PRICES);
+  const [pricesLoaded, setPricesLoaded] = useState(false);
   
   const [metals, setMetals] = useState<Asset[]>([]);
   const [cryptos, setCryptos] = useState<Asset[]>([]);
@@ -330,13 +333,18 @@ export default function AssetsScreen() {
 
       if (cryptoData.bitcoin || cryptoData.ethereum) {
         setCryptoPrices(prev => ({
+          ...prev,
           BTC: (cryptoData.bitcoin?.usd && cryptoData.bitcoin.usd > 0) ? cryptoData.bitcoin.usd : prev.BTC,
           ETH: (cryptoData.ethereum?.usd && cryptoData.ethereum.usd > 0) ? cryptoData.ethereum.usd : prev.ETH,
+          SOL: (cryptoData.solana?.usd && cryptoData.solana.usd > 0) ? cryptoData.solana.usd : prev.SOL,
+          XRP: (cryptoData.ripple?.usd && cryptoData.ripple.usd > 0) ? cryptoData.ripple.usd : prev.XRP,
         }));
       }
+      setPricesLoaded(true);
     } catch (error) {
       console.error('Price fetch error:', error);
       // Keep current prices on error - don't reset to defaults
+      setPricesLoaded(true); // Still mark as loaded to prevent infinite loading
     }
   };
 
@@ -659,7 +667,8 @@ export default function AssetsScreen() {
 
   useEffect(() => {
     setCryptos(prev => prev.map(c => {
-      const price = c.symbol === 'BTC' ? cryptoPrices.BTC : c.symbol === 'ETH' ? cryptoPrices.ETH : c.price;
+      // Get price from cryptoPrices state, fallback to current price
+      const price = cryptoPrices[c.symbol] || c.price;
       return { ...c, price, value: c.balance * price };
     }));
   }, [cryptoPrices]);
