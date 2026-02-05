@@ -18,8 +18,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
+import * as Crypto from 'expo-crypto';
 import { useStore } from '@/stores/useStore';
 import { API_URL } from '@/constants/api';
+
+// 🔒 SECURITY: Kriptografik olarak güvenli credential ID oluşturma
+async function generateSecureCredentialId(): Promise<string> {
+  const randomBytes = await Crypto.getRandomBytesAsync(32);
+  return Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 const API_BASE_URL = API_URL;
 const BIOMETRIC_KEY = 'auxite_biometric_enabled';
@@ -225,9 +232,10 @@ export function BiometricSetup({ onStatusChange }: Props) {
         return;
       }
 
-      // Generate a unique credential ID
-      const credentialId = `${walletAddress}-${Date.now()}`;
-      
+      // 🔒 SECURITY: Kriptografik olarak güvenli credential ID oluştur
+      // Eski format: ${walletAddress}-${Date.now()} - tahmin edilebilir ve güvensizdi
+      const credentialId = await generateSecureCredentialId();
+
       // Store in secure storage
       await SecureStore.setItemAsync(BIOMETRIC_KEY, 'true');
       await SecureStore.setItemAsync(BIOMETRIC_CREDENTIAL_KEY, credentialId);

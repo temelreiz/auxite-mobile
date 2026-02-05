@@ -2,7 +2,10 @@
 // Authentication Context for managing auth state
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+
+// ⚠️ SECURITY: Token'lar artık SecureStore'da şifreli saklanıyor
+// AsyncStorage güvensizdi - veriler plaintext olarak depolanıyordu
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://wallet.auxite.io';
 
@@ -65,9 +68,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const loadStoredAuth = async () => {
     try {
+      // 🔒 SECURITY: SecureStore kullanarak şifreli depolama
       const [storedToken, storedUser] = await Promise.all([
-        AsyncStorage.getItem('authToken'),
-        AsyncStorage.getItem('user'),
+        SecureStore.getItemAsync('authToken'),
+        SecureStore.getItemAsync('user'),
       ]);
 
       if (storedToken && storedUser) {
@@ -97,7 +101,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const data = await response.json();
         if (data.success && data.user) {
           setUser(data.user);
-          await AsyncStorage.setItem('user', JSON.stringify(data.user));
+          await SecureStore.setItemAsync('user', JSON.stringify(data.user));
         }
       } else {
         // Token invalid, clear auth
@@ -116,20 +120,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = async (newUser: User, newToken: string) => {
     setUser(newUser);
     setToken(newToken);
-    
+
+    // 🔒 SECURITY: Güvenli depolama ile token kaydet
     await Promise.all([
-      AsyncStorage.setItem('authToken', newToken),
-      AsyncStorage.setItem('user', JSON.stringify(newUser)),
+      SecureStore.setItemAsync('authToken', newToken),
+      SecureStore.setItemAsync('user', JSON.stringify(newUser)),
     ]);
   };
 
   const logout = async () => {
     setUser(null);
     setToken(null);
-    
+
+    // 🔒 SECURITY: Güvenli depolamadan temizle
     await Promise.all([
-      AsyncStorage.removeItem('authToken'),
-      AsyncStorage.removeItem('user'),
+      SecureStore.deleteItemAsync('authToken'),
+      SecureStore.deleteItemAsync('user'),
     ]);
   };
 
@@ -151,7 +157,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (data.success && data.user) {
         const updatedUser = { ...user, ...data.user };
         setUser(updatedUser);
-        await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+        await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
       }
     } catch (error) {
       console.error('Update user error:', error);
@@ -174,14 +180,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const data = await response.json();
 
       if (data.success) {
-        // Update user and token
+        // Update user and token - 🔒 SECURITY: SecureStore kullan
         if (data.user) {
           setUser(data.user);
-          await AsyncStorage.setItem('user', JSON.stringify(data.user));
+          await SecureStore.setItemAsync('user', JSON.stringify(data.user));
         }
         if (data.token) {
           setToken(data.token);
-          await AsyncStorage.setItem('authToken', data.token);
+          await SecureStore.setItemAsync('authToken', data.token);
         }
         return true;
       }

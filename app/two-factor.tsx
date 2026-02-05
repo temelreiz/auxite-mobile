@@ -498,10 +498,24 @@ export default function TwoFactorScreen() {
     }
   };
 
+  // 🔒 SECURITY: Clipboard'u belirli süre sonra otomatik temizle
+  const CLIPBOARD_CLEAR_DELAY = 30000; // 30 saniye
+
+  const clearClipboard = async () => {
+    try {
+      await Clipboard.setStringAsync('');
+    } catch (err) {
+      console.log('Clipboard clear error:', err);
+    }
+  };
+
   const copyBackupCodes = async () => {
     await Clipboard.setStringAsync(backupCodes.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+
+    // 🔒 SECURITY: 30 saniye sonra clipboard'u temizle
+    setTimeout(clearClipboard, CLIPBOARD_CLEAR_DELAY);
   };
 
   const copySecret = async () => {
@@ -509,6 +523,10 @@ export default function TwoFactorScreen() {
       await Clipboard.setStringAsync(secret);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+
+      // 🔒 SECURITY: 30 saniye sonra clipboard'u temizle
+      // Hassas 2FA secret key'i clipboard'da uzun süre kalmamalı
+      setTimeout(clearClipboard, CLIPBOARD_CLEAR_DELAY);
     }
   };
 

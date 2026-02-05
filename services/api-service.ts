@@ -1,8 +1,45 @@
 // services/api.ts
 // Auxite Mobile - API Service (Backend Entegrasyonlu)
+// ⚠️ SECURITY: 2FA zorunlu yapıldı, rate limiting eklendi
 
 import { API_URL } from '@/constants/api';
 const API_BASE_URL = `${API_URL}/api`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENT-SIDE RATE LIMITING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface RateLimitEntry {
+  count: number;
+  windowStart: number;
+}
+
+const rateLimitCache: Record<string, RateLimitEntry> = {};
+
+const RATE_LIMITS = {
+  withdraw: { maxRequests: 3, windowMs: 300000 },    // 3 requests per 5 minutes
+  trade: { maxRequests: 30, windowMs: 60000 },       // 30 requests per minute
+  general: { maxRequests: 60, windowMs: 60000 },     // 60 requests per minute
+};
+
+function checkRateLimit(action: keyof typeof RATE_LIMITS): { allowed: boolean; retryAfter?: number } {
+  const limit = RATE_LIMITS[action];
+  const now = Date.now();
+  const key = action;
+
+  if (!rateLimitCache[key] || now - rateLimitCache[key].windowStart >= limit.windowMs) {
+    rateLimitCache[key] = { count: 1, windowStart: now };
+    return { allowed: true };
+  }
+
+  if (rateLimitCache[key].count >= limit.maxRequests) {
+    const retryAfter = Math.ceil((limit.windowMs - (now - rateLimitCache[key].windowStart)) / 1000);
+    return { allowed: false, retryAfter };
+  }
+
+  rateLimitCache[key].count++;
+  return { allowed: true };
+}
 
 // Types
 export interface UserBalance {
@@ -1302,18 +1339,46 @@ export interface WithdrawResult {
 }
 
 export async function withdraw(
-  address: string, 
-  coin: string, 
-  auxmAmount: number, 
-  withdrawAddress: string, 
+  address: string,
+  coin: string,
+  auxmAmount: number,
+  withdrawAddress: string,
   memo?: string,
-  twoFactorCode?: string
+  twoFactorCode?: string  // ⚠️ SECURITY: Artık zorunlu - 2FA kodu olmadan çekim yapılamaz
 ): Promise<WithdrawResult> {
+  // 🔒 SECURITY: Client-side rate limiting
+  const rateLimitCheck = checkRateLimit('withdraw');
+  if (!rateLimitCheck.allowed) {
+    return {
+      success: false,
+      error: `Çok fazla çekim denemesi. Lütfen ${rateLimitCheck.retryAfter} saniye bekleyin.`
+    };
+  }
+
+  // 🔒 SECURITY: 2FA zorunlu kontrolü (güvenlik için client-side de kontrol)
+  if (!twoFactorCode || twoFactorCode.length < 6) {
+    return {
+      success: false,
+      error: 'Çekim işlemleri için 2FA kodu zorunludur.',
+      requires2FA: true
+    };
+  }
+
   try {
     const response = await fetch(`${API_BASE_URL}/withdraw`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address, coin, auxmAmount, withdrawAddress, memo, twoFactorCode }),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-wallet-address': address.toLowerCase(),
+      },
+      body: JSON.stringify({
+        address,
+        coin,
+        auxmAmount,
+        withdrawAddress,
+        memo,
+        twoFactorCode
+      }),
     });
     return await response.json();
   } catch (error: any) {
