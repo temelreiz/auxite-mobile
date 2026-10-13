@@ -17,6 +17,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useStore } from '@/stores/useStore';
 import AnimatedSplash from '@/components/AnimatedSplash';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { installAuthFetch } from '@/services/auth-fetch';
+
+// Attach the login token to every Auxite API request. Installed here, before
+// any screen mounts, so no early call goes out unauthenticated.
+installAuthFetch();
 
 // Prevent auto-hide of native splash
 SplashScreen.preventAutoHideAsync();
